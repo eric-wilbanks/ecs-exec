@@ -19,7 +19,6 @@ def get_ec2_instanceid(cluster, instanceid):
     instance_info = response['containerInstances'][0]
     return instance_info['ec2InstanceId']
 
-
 def identify_cluster():
     """Present a menu to select the cluster of interest."""
     clusters = []
@@ -133,8 +132,11 @@ def identify_containers(ecs_cluster, target):
             # For each task add the container info for each container
             for entry in task_info['tasks']:
                 task_id = entry["taskArn"].split('/')[-1]
-                ec2_instance_id = get_ec2_instanceid(
-                    ecs_cluster, entry["containerInstanceArn"])
+                if 'containerInstanceArn' in entry.keys():
+                    ec2_instance_id = get_ec2_instanceid(
+                        ecs_cluster, entry["containerInstanceArn"])
+                else:
+                    ec2_instance_id = 'FARGATE'
                 for container in entry["containers"]:
                     counter += 1
                     container_info = {
@@ -153,11 +155,12 @@ def pick_container(info):
     if not info:
         print("\nNo containers!\n")
         sys.exit(1)
-    max_name = 0
-    max_task_id = 0
-    max_instance = 0
-    max_image = 0
-    max_status = 0
+    # setting these minimum values to the lenghts of title of the column
+    max_name = 4
+    max_task_id = 7
+    max_instance = 11
+    max_image = 16
+    max_status = 6
     strcount = 0
     for line, value in info.items():
         strcount = len(value['name'])
@@ -175,13 +178,13 @@ def pick_container(info):
     template = str(
         "{:^" +
         str(strcount) +
-        "}  {:<" +
+        "}  {:^" +
         str(max_name) +
-        "}  {:<" +
+        "}  {:^" +
         str(max_status) +
-        "}  {:<" +
+        "}  {:^" +
         str(max_task_id) +
-        "}  {:<" +
+        "}  {:^" +
         str(max_instance) +
         "}  {:<" +
         str(max_image) +
@@ -223,9 +226,9 @@ def pick_container(info):
 
 def exec_to_container(cluster, task, name):
     """Connect into the specified container."""
-    cmd = "aws ecs execute-command --cluster " + cluster + " --task " + \
-        task + " --container " + name + " --interactive  --command \"" + \
-        shell_override + "\""
+    cmd = "aws ecs execute-command --region " + region_override + \
+        " --cluster " + cluster + " --task " + task + " --container " \
+        + name + " --interactive  --command \"" + shell_override + "\""
     if dry_run is True:
         print("run:\n\t " + cmd)
     else:
@@ -269,6 +272,7 @@ args = vars(parser.parse_args())
 target_cluster = args['cluster']
 target_service = args['service']
 shell_override = args['shell']
+region_override = args['region']
 dry_run = args['dry']
 
 client = boto3.client('ecs', region_name=args['region'])
