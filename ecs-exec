@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+
+# Written by Eric Wilbanks and Bryce Wade
+
+"""Drive through menus to get the command neeeded to connect to container."""
+import argparse
+import os
+import sys
+import boto3
+
+
+
+def get_ec2_instanceid(cluster, instanceid):
+    """Look up the EC2 instance ID for a specific container instance."""
+    response = client.describe_container_instances(
+        cluster=cluster, containerInstances=[instanceid])
+    # Since we are only looking up one instance it is safe to just grab the
+    # first container instance in the list
+    instance_info = response['containerInstances'][0]
+    return instance_info['ec2InstanceId']
+
+
+def identify_cluster():
+    """Present a menu to select the cluster of interest."""
+    clusters = []
+    paginator = client.get_paginator('list_clusters')
+    response_iterator = paginator.paginate()
+    for page in response_iterator:
+        clusters.extend(page["clusterArns"])
+    # sorting the list because everybody loves a sorted list
+    clusters.sort()
+
+    cluster_list = {}
+    counter = 0
+
+    if not clusters:
+        print("\nThis region has no clusters!\n")
+        sys.exit(1)
+
+    for cluster in clusters:
+        counter += 1
+        cluster_list[counter] = cluster.split('/')[1]
+
+    num_len = str(len(str(counter)))
+    template = str("{:^" + num_len + "}  {:<}")
+    print("Select the number of the ECS cluster you want to select:")
+    print(template.format('#', 'Cluster'))
+    print(template.format('-' * len(num_len), '------'))
+    for key, value in cluster_list.items():
+        print(template.format(key, value))
+
+    selection = int(input("\nentry: "))
+
+    print("Selection: ", cluster_list[selection])
+
+    if selection not in cluster_list.keys():
+        print("\nInvalid selection\n")
+        sys.exit(1)
+
+    return cluster_list[selection]
+
+
+def identify_services(ecs_cluster):
+    """Select service from list of services that support execute command."""
+    valid_services = []
+
+    print("Select the number of the ECS service you want to select:")
+    template = '{:<3}  {:<}'
+    print(template.format('#', 'Service'))
+    print(template.format('-', '-------'))
+
+    # Get pages of services with up to 10 services per page
+    paginator = client.get_paginator('list_services')
+    response_iterator = paginator.paginate(
+        cluster=ecs_cluster,
+        PaginationConfig={
+            'PageSize': 10
+        }
+    )
+    # For every page get the information about the services (up to 10 at
+    # a time)
+    for page in response_iterator:
+        arns = page.get('serviceArns', [])
+        if arns:
+            response = client.describe_services(
+                cluster=ecs_cluster,
+                services=arns
+            )
+            # For each service check to see if it has Execute Command enabled
+            # If it does we add it to the list of valid services.  If not
+            # we still print it out so people don't wonder why it is not
+            # listed.  But instead of a number for it we just print a "-"
+            for service in response.get('services'):
+                prefix = "-"
+                service_name = service.get('serviceName')
+                if service.get('enableExecuteCommand'):
+                    valid_services.append(service_name)
+                    prefix = len(valid_services)
+                print(template.format(prefix, service_name))
+
+    # If we have at least one service that has Execute Command enabled then
+    # allow the user to select one of the valid services
+    if valid_services:
+        selection = int(input("\nentry: "))
+        print("Selection: ", valid_services[selection - 1])
+        return valid_services[selection - 1]
+    # If not, let them know why they can't select a service
+    print("No services in the cluster support command execution!")
+    return None
+
+
+def identify_containers(ecs_cluster, target):
+    """Return information about all the containers for a service."""
+    containers = {}
+    counter = 0
+    # Get a list of tasks, max of 100 per page
+    paginator = client.get_paginator('list_tasks')
+    response_iterator = paginator.paginate(
+        cluster=ecs_cluster,
+        serviceName=target,
+        PaginationConfig={
+            'PageSize': 100
+        }
+    )
+    for page in response_iterator:
+        # For each page look up all the task info in one lookup
+        task_list = page['taskArns']
+        if task_list:
+            task_info = client.describe_tasks(
+                cluster=ecs_cluster,
+                tasks=task_list
+            )
+            # For each task add the container info for each container
+            for entry in task_info['tasks']:
+                task_id = entry["taskArn"].split('/')[-1]
+                ec2_instance_id = get_ec2_instanceid(
+                    ecs_cluster, entry["containerInstanceArn"])
+                for container in entry["containers"]:
+                    counter += 1
+                    container_info = {
+                        "name": container['name'],
+                        "task_id": task_id,
+                        "instance": ec2_instance_id,
+                        "image": container['image'],
+                        "status": container['lastStatus']
+                    }
+                    containers[counter] = container_info
+    return containers
+
+
+def pick_container(info):
+    """Pick the container from a menu of containers."""
+    if not info:
+        print("\nNo containers!\n")
+        sys.exit(1)
+    max_name = 0
+    max_task_id = 0
+    max_instance = 0
+    max_image = 0
+    max_status = 0
+    strcount = 0
+    for line, value in info.items():
+        strcount = len(value['name'])
+        max_name = strcount if strcount > max_name else max_name
+        strcount = len(value['status'])
+        max_status = strcount if strcount > max_status else max_status
+        strcount = len(value['task_id'])
+        max_task_id = strcount if strcount > max_task_id else max_task_id
+        strcount = len(value['instance'])
+        max_instance = strcount if strcount > max_instance else max_instance
+        strcount = len(value['image'])
+        max_image = strcount if strcount > max_image else max_image
+        strcount = len(str(line))
+
+    template = str(
+        "{:^" +
+        str(strcount) +
+        "}  {:<" +
+        str(max_name) +
+        "}  {:<" +
+        str(max_status) +
+        "}  {:<" +
+        str(max_task_id) +
+        "}  {:<" +
+        str(max_instance) +
+        "}  {:<" +
+        str(max_image) +
+        "}")
+    print(
+        template.format(
+            '#',
+            'Name',
+            'Status',
+            'Task ID',
+            'Instance ID',
+            'Container Image'))
+    print(
+        template.format(
+            '-' * 1,
+            '-' * max_name,
+            '-' * max_status,
+            '-' * max_task_id,
+            '-' * max_instance,
+            '-' * max_image))
+    for line, value in info.items():
+        print(
+            template.format(
+                line,
+                value['name'],
+                value['status'],
+                value['task_id'],
+                value['instance'],
+                value['image']))
+
+    selection = int(input("\nentry: "))
+
+    if selection not in info.keys():
+        print("\nInvalid selection\n")
+        sys.exit(1)
+
+    return(info[selection]['task_id'], info[selection]['name'])
+
+
+def exec_to_container(cluster, task, name):
+    """Connect into the specified container."""
+    cmd = "aws ecs execute-command --cluster " + cluster + " --task " + \
+        task + " --container " + name + " --interactive  --command \"" + \
+        shell_override + "\""
+    if dry_run is True:
+        print("run:\n\t " + cmd)
+    else:
+        os.system(cmd)
+
+
+parser = argparse.ArgumentParser(
+    description=('Identify a container running on AWS ECS and '
+                 'then exec into it'))
+parser.add_argument('-c', '--cluster', type=str, action="store",
+                    help='Specify which ECS cluster you\'d like to use')
+parser.add_argument('-s', '--service', type=str, action="store",
+                    help='Specify which ECS service you\'d like to use')
+parser.add_argument(
+    '-S',
+    '--shell',
+    type=str,
+    action="store",
+    default="/bin/sh",
+    help=('Name of shell you want to execute, or command... '
+          'I\'m not the container police'))
+parser.add_argument(
+    '-r',
+    '--region',
+    type=str,
+    action="store",
+    default=os.getenv(
+        'AWS_REGION',
+        os.getenv('AWS_DEFAULT_REGION')),
+    help=('Provide a different AWS region than what\'s specfied '
+          'in your AWS_Region env var'))
+parser.add_argument(
+    '-d',
+    '--dry',
+    action='store_true',
+    default=False,
+    help=('Dry run: provide the command to run instead of '
+          'actually executing it'))
+args = vars(parser.parse_args())
+
+target_cluster = args['cluster']
+target_service = args['service']
+shell_override = args['shell']
+dry_run = args['dry']
+
+client = boto3.client('ecs', region_name=args['region'])
+if target_cluster is None:
+    target_cluster = identify_cluster()
+if target_service is None:
+    target_service = identify_services(target_cluster)
+
+# Only if we have a valid target service do we continue
+if target_service:
+    target_containers = identify_containers(target_cluster, target_service)
+    target_task, target_name = pick_container(target_containers)
+    exec_to_container(target_cluster, target_task, target_name)
