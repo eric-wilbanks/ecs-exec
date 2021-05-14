@@ -40,7 +40,7 @@ def identify_profile():
     num_len = str(len(str(counter)))
     template = str("{:^" + num_len + "}  {:<}")
     print("Select the number of the profile you want to use:")
-    print(template.format('#', 'Cluster'))
+    print(template.format('#', 'Profile'))
     print(template.format('-' * len(num_len), '------'))
     for key, value in profile_list.items():
         print(template.format(key, value))
@@ -261,15 +261,17 @@ def pick_container(info):
 
 def exec_to_container(cluster, task, name):
     """Connect into the specified container."""
-    cmd = "aws ecs execute-command --region " + region_override + \
-        " --profile " + profile + \
-        " --cluster " + cluster + " --task " + task + " --container " \
+    cmd = "aws ecs execute-command"
+    if region_override is not None:
+        cmd += " --region " + region_override;
+    if profile is not None:
+        cmd += " --profile " + profile;
+    cmd += " --cluster " + cluster + " --task " + task + " --container " \
         + name + " --interactive  --command \"" + shell_override + "\""
     if dry_run is True:
         print("run:\n\t " + cmd)
     else:
         os.system(cmd)
-
 
 parser = argparse.ArgumentParser(
     description=('Identify a container running on AWS ECS and '
