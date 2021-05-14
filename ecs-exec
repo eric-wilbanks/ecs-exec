@@ -344,7 +344,7 @@ else:
     profile = None
 
 if profile is not None:
-    session = boto3.Session(region_name=args['region'], profile_name=profile)
+    session = boto3.session.Session(region_name=args['region'], profile_name=profile)
     client = session.client('ecs')
 else:
     client = boto3.client('ecs', region_name=args['region'])
