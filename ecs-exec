@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Version 1.1.0
+
 # Written by Eric Wilbanks and Bryce Wade
 # Special thanks to Bill Kidwell (billkidwell) for fixing a myopic oversight 
 # with is addition of a profile selection feature 
@@ -308,17 +310,17 @@ parser.add_argument(
     help=('Provide a different AWS region than what\'s specfied '
           'in your AWS_Region env var'))
 parser.add_argument(
-    '-p',
-    '--select_profile',
-    action='store_true',
-    default=False,
-    help=('Select from a list which AWS profile you would like to use'))          
-parser.add_argument(
     '-P',
     '--profile',
     type=str,
     action='store',
     help=('Specify which AWS profile you would like to use'))
+parser.add_argument(
+    '-p',
+    '--select_profile',
+    action='store_true',
+    default=False,
+    help=('Select from a list which AWS profile you would like to use'))
 parser.add_argument(
     '-d',
     '--dry',
