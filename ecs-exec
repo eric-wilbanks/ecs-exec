@@ -262,7 +262,7 @@ def pick_container(info):
     return(info[selection]['task_id'], info[selection]['name'])
 
 
-def exec_to_container(cluster, task, name):
+def exec_to_container(cluster, task, name, shell):
     """Connect into the specified container."""
     cmd = "aws ecs execute-command"
     if region_override is not None:
@@ -270,7 +270,7 @@ def exec_to_container(cluster, task, name):
     if profile is not None:
         cmd += " --profile " + profile;
     cmd += " --cluster " + cluster + " --task " + task + " --container " \
-        + name + " --interactive  --command \"" + shell_override + "\""
+        + name + " --interactive  --command \"" + shell + "\""
     if dry_run is True:
         print("run:\n\t " + cmd)
     else:
@@ -360,4 +360,4 @@ if target_service is None:
 if target_service:
     target_containers = identify_containers(target_cluster, target_service)
     target_task, target_name = pick_container(target_containers)
-    exec_to_container(target_cluster, target_task, target_name)
+    exec_to_container(target_cluster, target_task, target_name, shell_override)
