@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
+# Version 1.1.0
+
 # Written by Eric Wilbanks and Bryce Wade
+# Special thanks to Bill Kidwell (billkidwell) for fixing a myopic oversight 
+# with his addition of a profile selection feature 
 
 """Drive through menus to get the command neeeded to connect to container."""
 import argparse
 import os
 import sys
 import boto3
-
-
 
 def get_ec2_instanceid(cluster, instanceid):
     """Look up the EC2 instance ID for a specific container instance."""
@@ -21,6 +23,7 @@ def get_ec2_instanceid(cluster, instanceid):
 
 def identify_profile():
     """Present a menu to select the profile."""
+    print("Gets Run")
     profiles = boto3.session.Session().available_profiles
 
     if not profiles:
@@ -259,7 +262,7 @@ def pick_container(info):
     return(info[selection]['task_id'], info[selection]['name'])
 
 
-def exec_to_container(cluster, task, name):
+def exec_to_container(cluster, task, name, shell):
     """Connect into the specified container."""
     cmd = "aws ecs execute-command"
     if region_override is not None:
@@ -267,7 +270,7 @@ def exec_to_container(cluster, task, name):
     if profile is not None:
         cmd += " --profile " + profile;
     cmd += " --cluster " + cluster + " --task " + task + " --container " \
-        + name + " --interactive  --command \"" + shell_override + "\""
+        + name + " --interactive  --command \"" + shell + "\""
     if dry_run is True:
         print("run:\n\t " + cmd)
     else:
@@ -276,10 +279,18 @@ def exec_to_container(cluster, task, name):
 parser = argparse.ArgumentParser(
     description=('Identify a container running on AWS ECS and '
                  'then exec into it'))
-parser.add_argument('-c', '--cluster', type=str, action="store",
-                    help='Specify which ECS cluster you\'d like to use')
-parser.add_argument('-s', '--service', type=str, action="store",
-                    help='Specify which ECS service you\'d like to use')
+parser.add_argument(
+    '-c',
+    '--cluster',
+    type=str,
+    action="store",
+    help='Specify which ECS cluster you\'d like to use')
+parser.add_argument(
+    '-s',
+    '--service',
+    type=str,
+    action="store",
+    help='Specify which ECS service you\'d like to use')
 parser.add_argument(
     '-S',
     '--shell',
@@ -299,17 +310,25 @@ parser.add_argument(
     help=('Provide a different AWS region than what\'s specfied '
           'in your AWS_Region env var'))
 parser.add_argument(
+    '-P',
+    '--profile',
+    type=str,
+    action='store',
+    help=('Specify which AWS profile you would like to use'))
+parser.add_argument(
+    '-p',
+    '--select_profile',
+    action='store_true',
+    default=False,
+    help=('Select from a list which AWS profile you would like to use'))
+parser.add_argument(
     '-d',
     '--dry',
     action='store_true',
     default=False,
     help=('Dry run: provide the command to run instead of '
           'actually executing it'))
-parser.add_argument(
-    '-P',
-    '--profile',
-    action='store',
-    help=('Specify which AWS profile you would like to use'))
+
 args = vars(parser.parse_args())
 
 target_cluster = args['cluster']
@@ -319,12 +338,19 @@ region_override = args['region']
 dry_run = args['dry']
 profile_override = args['profile']
 
-if profile_override is None:
+if args['select_profile'] is True:
     profile = identify_profile()
-else:
+elif profile_override is not None:
     profile = profile_override
+else:
+    profile = None
 
-client = boto3.client('ecs', region_name=args['region'])
+if profile is not None:
+    session = boto3.session.Session(region_name=args['region'], profile_name=profile)
+    client = session.client('ecs')
+else:
+    client = boto3.client('ecs', region_name=args['region'])
+
 if target_cluster is None:
     target_cluster = identify_cluster()
 if target_service is None:
@@ -334,4 +360,4 @@ if target_service is None:
 if target_service:
     target_containers = identify_containers(target_cluster, target_service)
     target_task, target_name = pick_container(target_containers)
-    exec_to_container(target_cluster, target_task, target_name)
+    exec_to_container(target_cluster, target_task, target_name, shell_override)
