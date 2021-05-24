@@ -4,7 +4,7 @@
 
 # Written by Eric Wilbanks and Bryce Wade
 # Special thanks to Bill Kidwell (billkidwell) for fixing a myopic oversight 
-# with is addition of a profile selection feature 
+# with his addition of a profile selection feature 
 
 """Drive through menus to get the command neeeded to connect to container."""
 import argparse
