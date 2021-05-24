@@ -23,7 +23,6 @@ def get_ec2_instanceid(cluster, instanceid):
 
 def identify_profile():
     """Present a menu to select the profile."""
-    print("Gets Run")
     profiles = boto3.session.Session().available_profiles
 
     if not profiles:
