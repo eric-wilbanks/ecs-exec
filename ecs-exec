@@ -19,6 +19,41 @@ def get_ec2_instanceid(cluster, instanceid):
     instance_info = response['containerInstances'][0]
     return instance_info['ec2InstanceId']
 
+def identify_profile():
+    """Present a menu to select the profile."""
+    profiles = boto3.session.Session().available_profiles
+
+    if not profiles:
+        return 'default'
+    elif len(profiles) == 1:
+        return profiles[0]
+
+    profiles.sort()
+
+    profile_list = {}
+    counter = 0
+
+    for profile in profiles:
+        counter += 1
+        profile_list[counter] = profile
+
+    num_len = str(len(str(counter)))
+    template = str("{:^" + num_len + "}  {:<}")
+    print("Select the number of the profile you want to use:")
+    print(template.format('#', 'Profile'))
+    print(template.format('-' * len(num_len), '------'))
+    for key, value in profile_list.items():
+        print(template.format(key, value))
+
+    selection = int(input("\nentry: "))
+    print("Selection: ", profile_list[selection])
+
+    if selection not in profile_list.keys():
+        print("\nInvalid selection\n")
+        sys.exit(1)
+
+    return profile_list[selection]
+
 def identify_cluster():
     """Present a menu to select the cluster of interest."""
     clusters = []
@@ -226,14 +261,17 @@ def pick_container(info):
 
 def exec_to_container(cluster, task, name):
     """Connect into the specified container."""
-    cmd = "aws ecs execute-command --region " + region_override + \
-        " --cluster " + cluster + " --task " + task + " --container " \
+    cmd = "aws ecs execute-command"
+    if region_override is not None:
+        cmd += " --region " + region_override;
+    if profile is not None:
+        cmd += " --profile " + profile;
+    cmd += " --cluster " + cluster + " --task " + task + " --container " \
         + name + " --interactive  --command \"" + shell_override + "\""
     if dry_run is True:
         print("run:\n\t " + cmd)
     else:
         os.system(cmd)
-
 
 parser = argparse.ArgumentParser(
     description=('Identify a container running on AWS ECS and '
@@ -267,6 +305,11 @@ parser.add_argument(
     default=False,
     help=('Dry run: provide the command to run instead of '
           'actually executing it'))
+parser.add_argument(
+    '-P',
+    '--profile',
+    action='store',
+    help=('Specify which AWS profile you would like to use'))
 args = vars(parser.parse_args())
 
 target_cluster = args['cluster']
@@ -274,6 +317,12 @@ target_service = args['service']
 shell_override = args['shell']
 region_override = args['region']
 dry_run = args['dry']
+profile_override = args['profile']
+
+if profile_override is None:
+    profile = identify_profile()
+else:
+    profile = profile_override
 
 client = boto3.client('ecs', region_name=args['region'])
 if target_cluster is None:
