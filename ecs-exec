@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-# Version 1.1.0
+# Version 1.1.1
 
 # Written by Eric Wilbanks and Bryce Wade
 # Special thanks to Bill Kidwell (billkidwell) for fixing a myopic oversight 
 # with his addition of a profile selection feature 
+# Mark Courtade 4/11/2024 - Added Logic to ignore AWS DataGuard Containers
 
 """Drive through menus to get the command neeeded to connect to container."""
 import argparse
@@ -169,21 +170,23 @@ def identify_containers(ecs_cluster, target):
             # For each task add the container info for each container
             for entry in task_info['tasks']:
                 task_id = entry["taskArn"].split('/')[-1]
+                
                 if 'containerInstanceArn' in entry.keys():
                     ec2_instance_id = get_ec2_instanceid(
                         ecs_cluster, entry["containerInstanceArn"])
                 else:
                     ec2_instance_id = 'FARGATE'
                 for container in entry["containers"]:
-                    counter += 1
-                    container_info = {
-                        "name": container['name'],
-                        "task_id": task_id,
-                        "instance": ec2_instance_id,
-                        "image": container['image'],
-                        "status": container['lastStatus']
-                    }
-                    containers[counter] = container_info
+                    if "aws-guardduty-agent" not in container["name"]:
+                        counter += 1
+                        container_info = {
+                            "name": container['name'],
+                            "task_id": task_id,
+                            "instance": ec2_instance_id,
+                            "image": container['image'],
+                            "status": container['lastStatus']
+                        }
+                        containers[counter] = container_info
     return containers
 
 
